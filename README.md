@@ -1,6 +1,8 @@
 # Auto-Clicker
 
-![Auto-Clicker](images/image.png)
+<p align="center">
+  <img src="images/image.png" alt="Auto-Clicker">
+</p>
 
 Un outil d'automatisation de clics multiples avec configuration personnalisable des positions et du nombre de clics.
 
