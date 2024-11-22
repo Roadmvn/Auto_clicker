@@ -1,9 +1,6 @@
 # Auto-Clicker
 
-```
-![Auto-Clicker](image.png)
-
-```
+![Auto-Clicker](images/image.png)
 
 Un outil d'automatisation de clics multiples avec configuration personnalisable des positions et du nombre de clics.
 
@@ -19,8 +16,6 @@ Un outil d'automatisation de clics multiples avec configuration personnalisable 
 ```bash
 python -m venv .venv
 ```
-
-````
 
 2. Activez l'environnement virtuel :
 
