@@ -2,237 +2,285 @@ import pyautogui
 import keyboard
 import threading
 import time
-import json
-from concurrent.futures import ThreadPoolExecutor
+import tkinter as tk
+from tkinter import ttk, messagebox
+
+class AutoClickerGUI:
+    def __init__(self):
+        self.root = tk.Tk()
+        self.root.title("🎯 Auto-Clicker Pro")
+        self.root.minsize(400, 500)
+        
+        # Variables
+        self.always_on_top = tk.BooleanVar(value=False)
+        self.delay_ms = tk.StringVar(value="1000")
+        self.status_var = tk.StringVar(value="Prêt")
+        
+        self.setup_style()
+        self.setup_gui()
+        self.clicker = AutoClicker(self)
+
+    def setup_style(self):
+        self.root.configure(bg='#f5f5f5')
+        style = ttk.Style()
+        style.configure('Custom.TButton', padding=5, font=('Arial', 10))
+        style.configure('Custom.TLabel', padding=5, font=('Arial', 10))
+        self.root.grid_columnconfigure(0, weight=1)
+        self.root.grid_rowconfigure(0, weight=1)
+
+    def setup_gui(self):
+        main_frame = ttk.Frame(self.root, padding="10")
+        main_frame.grid(row=0, column=0, sticky="nsew")
+        main_frame.grid_columnconfigure(0, weight=1)
+
+        # Titre
+        ttk.Label(
+            main_frame,
+            text="Auto-Clicker Pro",
+            font=('Arial', 16, 'bold')
+        ).grid(row=0, column=0, pady=(0, 10))
+
+        # Options
+        options_frame = ttk.Frame(main_frame)
+        options_frame.grid(row=1, column=0, sticky="ew", pady=(0, 10))
+        
+        ttk.Checkbutton(
+            options_frame,
+            text="Toujours visible",
+            variable=self.always_on_top,
+            command=self.toggle_always_on_top
+        ).grid(row=0, column=0, sticky="w")
+
+        # Capture
+        capture_frame = ttk.LabelFrame(main_frame, text="📍 Capture", padding=10)
+        capture_frame.grid(row=2, column=0, sticky="ew", pady=(0, 10))
+        
+        self.capture_btn = ttk.Button(
+            capture_frame,
+            text="Démarrer la capture (F2)",
+            command=self.toggle_capture
+        )
+        self.capture_btn.grid(row=0, column=0, sticky="ew")
+
+        # Configuration
+        config_frame = ttk.LabelFrame(main_frame, text="⚙️ Configuration", padding=10)
+        config_frame.grid(row=3, column=0, sticky="ew", pady=(0, 10))
+        
+        ttk.Label(config_frame, text="Délai (ms):").grid(row=0, column=0, padx=(0, 5))
+        ttk.Entry(
+            config_frame,
+            textvariable=self.delay_ms,
+            width=10
+        ).grid(row=0, column=1, sticky="w")
+
+        # Liste des positions
+        positions_frame = ttk.LabelFrame(main_frame, text="📋 Positions capturées", padding=10)
+        positions_frame.grid(row=4, column=0, sticky="nsew", pady=(0, 10))
+        positions_frame.grid_columnconfigure(0, weight=1)
+        positions_frame.grid_rowconfigure(0, weight=1)
+
+        # Treeview avec menu contextuel
+        self.tree = ttk.Treeview(
+            positions_frame,
+            columns=("pos", "x", "y", "clicks"),
+            show="headings",
+            height=8
+        )
+        
+        self.tree.heading("pos", text="#")
+        self.tree.heading("x", text="X")
+        self.tree.heading("y", text="Y")
+        self.tree.heading("clicks", text="Clics")
+        
+        self.tree.column("pos", width=50)
+        self.tree.column("x", width=100)
+        self.tree.column("y", width=100)
+        self.tree.column("clicks", width=100)
+        
+        # Menu contextuel
+        self.context_menu = tk.Menu(self.root, tearoff=0)
+        self.context_menu.add_command(label="Modifier nombre de clics", command=self.modify_clicks)
+        self.tree.bind("<Button-3>", self.show_context_menu)
+        
+        scrollbar = ttk.Scrollbar(positions_frame, orient="vertical", command=self.tree.yview)
+        self.tree.configure(yscrollcommand=scrollbar.set)
+        
+        self.tree.grid(row=0, column=0, sticky="nsew")
+        scrollbar.grid(row=0, column=1, sticky="ns")
+
+        # Boutons d'action
+        actions_frame = ttk.Frame(main_frame)
+        actions_frame.grid(row=5, column=0, sticky="ew", pady=(0, 10))
+        actions_frame.grid_columnconfigure(0, weight=1)
+        actions_frame.grid_columnconfigure(1, weight=1)
+        
+        ttk.Button(
+            actions_frame,
+            text="▶️ Exécuter",
+            command=self.execute_clicks
+        ).grid(row=0, column=0, padx=5, sticky="ew")
+        
+        ttk.Button(
+            actions_frame,
+            text="🗑️ Effacer tout",
+            command=self.clear_positions
+        ).grid(row=0, column=1, padx=5, sticky="ew")
+
+        # Status
+        ttk.Label(
+            main_frame,
+            textvariable=self.status_var,
+            font=('Arial', 9, 'italic')
+        ).grid(row=6, column=0)
+
+    def show_context_menu(self, event):
+        item = self.tree.identify_row(event.y)
+        if item:
+            self.tree.selection_set(item)
+            self.context_menu.post(event.x_root, event.y_root)
+
+    def modify_clicks(self):
+        selected_item = self.tree.selection()
+        if not selected_item:
+            return
+        
+        item = selected_item[0]
+        current_values = self.tree.item(item)['values']
+        index = int(current_values[0]) - 1
+        
+        try:
+            new_clicks = tk.simpledialog.askinteger(
+                "Modifier les clics",
+                "Nombre de clics :",
+                initialvalue=current_values[3],
+                minvalue=1,
+                maxvalue=100
+            )
+            
+            if new_clicks:
+                x, y, _ = self.clicker.coordinates[index]
+                self.clicker.coordinates[index] = (x, y, new_clicks)
+                self.update_positions_display()
+        except Exception as e:
+            messagebox.showerror("Erreur", str(e))
+
+    def toggle_always_on_top(self):
+        self.root.attributes('-topmost', self.always_on_top.get())
+
+    def toggle_capture(self):
+        if not hasattr(self, 'is_capturing'):
+            self.is_capturing = False
+            
+        if not self.is_capturing:
+            self.is_capturing = True
+            self.capture_btn.configure(text="Arrêter la capture (F3)")
+            self.clicker.start_capture()
+        else:
+            self.stop_capture()
+
+    def stop_capture(self):
+        self.is_capturing = False
+        self.capture_btn.configure(text="Démarrer la capture (F2)")
+        self.clicker.stop_capture()
+
+    def execute_clicks(self):
+        try:
+            delay = int(self.delay_ms.get())
+            if delay < 0:
+                raise ValueError
+            self.clicker.delay_ms = delay
+            self.clicker.execute_clicks()
+        except ValueError:
+            messagebox.showerror("Erreur", "Le délai doit être un nombre positif")
+
+    def clear_positions(self):
+        self.clicker.coordinates.clear()
+        self.update_positions_display()
+        self.status_var.set("Positions effacées")
+
+    def update_positions_display(self):
+        for item in self.tree.get_children():
+            self.tree.delete(item)
+        
+        for i, (x, y, clicks) in enumerate(self.clicker.coordinates, 1):
+            self.tree.insert("", "end", values=(i, x, y, clicks))
+
+    def run(self):
+        self.root.mainloop()
+
+
+
 
 class AutoClicker:
-    def __init__(self):
-        self.coordinates = []  # Format: [(x, y, nb_clics), ...]
-        self.delay = 0
+    def __init__(self, gui):
+        self.gui = gui
+        self.coordinates = []
+        self.delay_ms = 1000
         self.is_capturing = False
-        self.last_params = {
-            'coordinates': [],
-            'delay': 0
-        }
+        self.last_params = {'coordinates': [], 'delay_ms': 0}
         self.has_executed = False
         pyautogui.FAILSAFE = True
-        
-    def get_coordinates_interactive(self):
-        """Lance le mode de capture interactive des coordonnées"""
-        capture_thread = threading.Thread(target=self.start_coordinate_listener)
-        capture_thread.start()
-        capture_thread.join()
 
-    def start_coordinate_listener(self):
+    def start_capture(self):
         self.is_capturing = True
-        print("\n📍 Mode Capture des Positions")
-        print("---------------------------")
-        print("→ F2: Capturer la position actuelle du curseur")
-        print("→ F3: Terminer la capture")
-        print("→ Échap: Quitter le programme\n")
+        capture_thread = threading.Thread(target=self.capture_listener)
+        capture_thread.daemon = True
+        capture_thread.start()
+
+    def capture_listener(self):
+        keyboard.on_press_key('F2', lambda _: self.capture_position())
+        keyboard.on_press_key('F3', lambda _: self.stop_capture())
+        keyboard.on_press_key('esc', lambda _: self.quit_program())
         
         while self.is_capturing:
-            if keyboard.is_pressed('F2'):
-                x, y = pyautogui.position()
-                nb_clics = self.get_click_count()
-                self.coordinates.append((x, y, nb_clics))
-                print(f"✅ Position capturée: ({x}, {y}) - {nb_clics} clics")
-                time.sleep(0.3)
-            elif keyboard.is_pressed('F3'):
-                self.is_capturing = False
-                print("\n✅ Capture terminée avec succès!")
-                break
-            elif keyboard.is_pressed('esc'):
-                self.is_capturing = False
-                print("\n❌ Programme terminé par l'utilisateur")
-                exit()
+            time.sleep(0.1)
 
-    def get_click_count(self):
-        while True:
-            try:
-                clicks = int(input("\nEntrez le nombre de fois que le clic doit être effectué à cette position : "))
-                if clicks > 0:
-                    return clicks
-                print("❌ Le nombre de clics doit être supérieur à 0.")
-            except ValueError:
-                print("❌ Veuillez entrer un nombre entier valide.")
+    def capture_position(self):
+        if self.is_capturing:
+            x, y = pyautogui.position()
+            self.coordinates.append((x, y, 1))
+            self.gui.update_positions_display()
+            self.gui.status_var.set(f"Position capturée: ({x}, {y})")
 
-    def show_coordinates(self):
-        if not self.coordinates:
-            print("\n⚠️ Aucune position enregistrée.")
-            print("→ Utilisez l'option 1 pour capturer des positions.")
-            return False
-        
-        print("\n📋 Liste des positions enregistrées:")
-        print("--------------------------------")
-        for i, (x, y, clicks) in enumerate(self.coordinates, 1):
-            print(f"{i}. Position ({x}, {y}) - {clicks} clics")
-        return True
-
-    def modify_coordinates(self):
-        if not self.show_coordinates():
-            return
-
-        while True:
-            try:
-                print("\n✏️ Menu de Modification")
-                print("-------------------")
-                print("1. Modifier une position")
-                print("2. Supprimer une position")
-                print("3. Retour au menu principal")
-                choice = input("\nVotre choix : ")
-                
-                if choice == '1':
-                    idx = int(input(f"\nNuméro de la position à modifier (1-{len(self.coordinates)}) : ")) - 1
-                    if 0 <= idx < len(self.coordinates):
-                        print("\n1. Modifier les coordonnées")
-                        print("2. Modifier le nombre de clics")
-                        mod_choice = input("\nVotre choix : ")
-                        
-                        if mod_choice == '1':
-                            print("\n→ Placez votre curseur à la nouvelle position et appuyez sur F2...")
-                            while True:
-                                if keyboard.is_pressed('F2'):
-                                    x, y = pyautogui.position()
-                                    self.coordinates[idx] = (x, y, self.coordinates[idx][2])
-                                    print(f"✅ Nouvelle position enregistrée : ({x}, {y})")
-                                    time.sleep(0.3)
-                                    break
-                        elif mod_choice == '2':
-                            new_clicks = self.get_click_count()
-                            self.coordinates[idx] = (self.coordinates[idx][0], 
-                                                   self.coordinates[idx][1], 
-                                                   new_clicks)
-                            print(f"✅ Nombre de clics modifié : {new_clicks}")
-                
-                elif choice == '2':
-                    idx = int(input(f"\nNuméro de la position à supprimer (1-{len(self.coordinates)}) : ")) - 1
-                    if 0 <= idx < len(self.coordinates):
-                        del self.coordinates[idx]
-                        print("✅ Position supprimée avec succès.")
-                
-                elif choice == '3':
-                    break
-                
-                self.show_coordinates()
-            
-            except (ValueError, IndexError):
-                print("❌ Entrée invalide. Veuillez réessayer.")
-
-    def get_delay(self):
-        while True:
-            try:
-                print("\n💡 Note: 1000 ms = 1 seconde")
-                print("Exemple: 100 ms = 0.1 seconde")
-                delay_str = input("\nEntrez le délai entre les clics (en millisecondes) : ")
-                self.delay = float(delay_str) / 1000  # Conversion en secondes
-                if self.delay >= 0:
-                    break
-                print("❌ Le délai doit être positif ou nul.")
-            except ValueError:
-                print("❌ Veuillez entrer un nombre valide.")
-
-    def perform_click(self, coord):
-        x, y, nb_clics = coord
-        try:
-            for i in range(nb_clics):
-                pyautogui.click(x, y)
-                print(f"✅ Clic {i+1}/{nb_clics} effectué à ({x}, {y})")
-                time.sleep(self.delay)
-        except Exception as e:
-            print(f"❌ Erreur lors du clic à ({x}, {y}): {str(e)}")
+    def stop_capture(self):
+        self.is_capturing = False
+        self.cleanup_listeners()
+        self.gui.status_var.set("Capture terminée")
 
     def execute_clicks(self):
         if not self.coordinates:
-            print("\n⚠️ Impossible d'exécuter les clics!")
-            print("→ Aucune position n'a été capturée")
-            print("→ Utilisez d'abord l'option 1 pour capturer des positions")
+            messagebox.showwarning("Attention", "Aucune position capturée")
             return False
-
-        print("\n🚀 Exécution des clics automatiques")
-        print("--------------------------------")
-        print(f"Nombre de positions : {len(self.coordinates)}")
-        print(f"Délai entre les clics : {self.delay * 1000} millisecondes")
-        
-        self.last_params['coordinates'] = self.coordinates.copy()
-        self.last_params['delay'] = self.delay
-        self.has_executed = True
-        
-        with ThreadPoolExecutor(max_workers=len(self.coordinates)) as executor:
-            executor.map(self.perform_click, self.coordinates)
+            
+        self.gui.status_var.set("Exécution des clics...")
+        execution_thread = threading.Thread(target=self.execute_clicks_thread)
+        execution_thread.daemon = True
+        execution_thread.start()
         return True
 
-    def execute_last_params(self):
-        if not self.has_executed:
-            print("\n⚠️ Aucune exécution précédente!")
-            print("→ Vous devez d'abord exécuter les clics au moins une fois (option 3)")
-            return
+    def execute_clicks_thread(self):
+        try:
+            for x, y, nb_clics in self.coordinates:
+                for _ in range(nb_clics):
+                    pyautogui.click(x, y)
+                    time.sleep(self.delay_ms / 1000)
+                    
+            self.last_params['coordinates'] = self.coordinates.copy()
+            self.last_params['delay_ms'] = self.delay_ms
+            self.has_executed = True
+            self.gui.status_var.set("Exécution terminée")
+        except Exception as e:
+            messagebox.showerror("Erreur", f"Erreur lors de l'exécution: {str(e)}")
+            self.gui.status_var.set("Erreur d'exécution")
 
-        if not self.last_params['coordinates']:
-            print("\n⚠️ Aucun paramètre précédent disponible!")
-            print("→ Capturez d'abord des positions (option 1)")
-            print("→ Puis exécutez les clics (option 3)")
-            return
-            
-        self.coordinates = self.last_params['coordinates'].copy()
-        self.delay = self.last_params['delay']
-        print("\n🔄 Utilisation des derniers paramètres :")
-        print(f"Délai : {self.delay * 1000} millisecondes")
-        self.show_coordinates()
-        self.execute_clicks()
+    def cleanup_listeners(self):
+        keyboard.unhook_all()
 
-def main():
-    print("🎯 Auto-Clicker")
-    print("Un outil pour automatiser vos clics")
-    print("--------------------------------")
-    
-    clicker = AutoClicker()
-    
-    while True:
-        print("\n📋 Menu Principal")
-        print("-------------")
-        print("1. Capturer de nouvelles positions")
-        print("2. Afficher/Modifier les positions")
-        print("3. Exécuter les clics")
-        print("4. Réexécuter avec les derniers paramètres")
-        print("5. Quitter")
-        
-        choix = input("\nVotre choix : ")
-        
-        if choix == '1':
-            clicker.coordinates = []
-            print("\n📌 Mode Capture")
-            print("→ Placez votre curseur aux positions souhaitées")
-            print("→ Appuyez sur F2 pour capturer chaque position")
-            print("→ Appuyez sur F3 quand vous avez terminé")
-            clicker.get_coordinates_interactive()
-        
-        elif choix == '2':
-            if not clicker.coordinates:
-                print("\n⚠️ Aucune position n'est enregistrée!")
-                print("→ Utilisez d'abord l'option 1 pour capturer des positions")
-                continue
-            clicker.modify_coordinates()
-            
-        elif choix == '3':
-            if not clicker.coordinates:
-                print("\n⚠️ Impossible d'exécuter les clics!")
-                print("→ Aucune position n'a été capturée")
-                print("→ Utilisez d'abord l'option 1 pour capturer les positions souhaitées")
-                continue
-            clicker.get_delay()
-            clicker.execute_clicks()
-            
-        elif choix == '4':
-            clicker.execute_last_params()
-            
-        elif choix == '5':
-            print("\n👋 Merci d'avoir utilisé Auto-Clicker!")
-            break
-            
-        else:
-            print("\n❌ Option invalide!")
-            print("→ Veuillez choisir une option entre 1 et 5")
+    def quit_program(self):
+        self.cleanup_listeners()
+        self.gui.root.quit()
+
 
 if __name__ == "__main__":
-    main()
+    app = AutoClickerGUI()
+    app.run()
