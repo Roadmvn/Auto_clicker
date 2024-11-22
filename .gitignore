@@ -1,0 +1,22 @@
+# Fichiers Python
+*.pyc
+__pycache__/
+
+# Environnements virtuels
+venv/
+env/
+
+# Fichiers de configuration locaux
+*.env
+
+# Fichiers générés par PyInstaller
+build/
+dist/
+*.spec
+
+# Fichiers de logs
+*.log
+
+# Fichiers système
+.DS_Store
+Thumbs.db
