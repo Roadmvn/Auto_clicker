@@ -1,5 +1,8 @@
 # Auto-Clicker
 
+![Auto-Clicker](images/image.png)
+
+
 Un outil d'automatisation de clics multiples avec configuration personnalisable des positions et du nombre de clics.
 
 ## 📋 Prérequis
