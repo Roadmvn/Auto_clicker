@@ -1,7 +1,7 @@
 # Auto-Clicker
 
 ```
-![Auto-Clicker](images/image.png)
+![Auto-Clicker](image.png)
 
 ```
 
